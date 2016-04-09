@@ -6,13 +6,18 @@
  Required input: ban_local_filter density_map.mrc resolution_map.mrc output_map.mrc [ --mask (mask.mrc) ] [ --bfac (b-factor) ] [ --oversample ] [ --gauss ]
 
  -- environmental variable OMP_NUM_THREADS may be set to limit thread count, otherwise all reported processors will be used
+ 
  -- input map should be b-factor sharpened and unfiltered to avoid degrading high-resolution information by filtering twice
+ 
  -- resolution maps are truncated at highest reported resolution - without a mask only assigned voxels (<100) are recovered
- -- the binary mask option forces unassigned voxels within it to be reinterpolated two steps above the max local resolution
+    the binary mask option forces unassigned voxels within it to be reinterpolated two steps above the max local resolution
+ 
  -- b-factor dampening may be corrected with the --bfac (b-factor) flag - the b-factor is automatically flipped if negative
- -- this option currently uses a heuristic but will be updated before publication: please use very cautiously until updated
+    this option currently uses a heuristic but will be updated before publication: please use very cautiously until updated
+ 
  -- twofold oversampling may be set using --oversample - this allows one to smooth maps close to nyquist for interpretation
- -- oversampling can be beneficial at high resolution, however not all 3D visualisation software can handle the larger maps
+    oversampling can be beneficial at high resolution, however not all 3D visualisation software can handle the larger maps
+ 
  -- the gaussian kernel is provided unless the Lanczos kernel exhibits ringing - techically possible but never yet observed
 
  -- ResMap & blocres are both supported: no decision on relative quality is made, such judgements are best left to the user
