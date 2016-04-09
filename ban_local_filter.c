@@ -31,7 +31,8 @@
 #include <pthread.h>
 #include <unistd.h>
 
-//Peak cut at 2 for -0.5 to 0.5 peak, alpha for lobes, true intercept for support, max support, twofold oversampling, density truncation, max kernels to store
+/* Peak cut at 2 for -0.5 to 0.5 peak, alpha for lobes, true intercept for support,
+    max support, twofold oversampling, density truncation, max kernels to store */
 #define CUT 2
 #define ALPHA 5
 #define INTERCEPT 4.49340945790906
