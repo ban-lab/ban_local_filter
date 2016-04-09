@@ -931,7 +931,7 @@ int main(int argc, char **argv){
   if (argc < 4){
     printf("\n Required input: %s density_map.mrc resolution_map.mrc output_map.mrc [ --mask (mask.mrc) ] [ --bfac (b-factor) ] [ --oversample ] [ --gauss ]\n\n", argv[0]);
     printf(" -- environmental variable OMP_NUM_THREADS may be set to limit thread count, otherwise all reported processors will be used\n");
-    printf(" -- input map should be b-factor sharpened and unfiltered to avoid degrading high-resolution information by filtering twice\n");
+    printf(" -- input map should be b-factor sharpened but unfiltered to avoid degrading high-resolution information by filtering twice\n");
     printf(" -- resolution maps are truncated at highest reported resolution - without a mask only assigned voxels (<100) are recovered\n");
     printf(" -- the binary mask option forces unassigned voxels within it to be reinterpolated two steps above the max local resolution\n");
     printf(" -- b-factor dampening may be corrected with the --bfac (b-factor) flag - the b-factor is automatically flipped if negative\n");
@@ -943,11 +943,13 @@ int main(int argc, char **argv){
     printf("    ban_loc_filt & blocfilt: ban_loc_filt is faster than blocfilt due to the limited support of the kernel and quantisation\n\n");
     printf("    PLEASE NOTE: The output will only ever be as good as your input resmap, map and mask - if they look poor do not proceed\n");
     printf("    junk in equals junk out is one thing we will happily guarantee: contact chsaylett@gmail.com for support - best of luck!\n\n");
-    printf(" ban_loc_res v1.0 3D spherical j1 lanczos kernel local interpolation - header correct on 16-02-2016 - GNU licensed __chsa__\n\n");
+    printf(" ban_loc_res v1.0 3D spherical j1 lanczos kernel local interpolation - header correct on 16-02-2016 - GNU licensed __chsa__\n");
+    printf(" <We intend to publish this approach in future, however until then please reference as personal communication Dr CHSAylett>\n\n");
     return 0;
   }
 
-  printf("\n ban_loc_res v1.0 3D spherical j1 lanczos kernel local interpolation - header correct on 16-02-2016 - GNU licensed __chsa__\n\n");
+  printf("\n ban_loc_res v1.0 3D spherical j1 lanczos kernel local interpolation - header correct on 16-02-2016 - GNU licensed __chsa__");
+  printf("\n <We intend to publish this approach in future, however until then please reference as personal communication Dr CHSAylett>\n\n");
 
   int i, j, result_code;
 
