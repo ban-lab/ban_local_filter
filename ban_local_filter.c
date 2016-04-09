@@ -31,10 +31,9 @@
 #include <pthread.h>
 #include <unistd.h>
 
-//Peak cut at 2 for -0.5 to 0.5 peak, alpha for lobes, cube size for hilbert, true intercept for support, max support, twofold oversampling, density truncation, max kernels to store
+//Peak cut at 2 for -0.5 to 0.5 peak, alpha for lobes, true intercept for support, max support, twofold oversampling, density truncation, max kernels to store
 #define CUT 2
 #define ALPHA 5
-#define MAP_CUBE 32768
 #define INTERCEPT 4.49340945790906
 #define MAX_SUPPORT 1000
 #define OVERSAMPLING 2
@@ -82,7 +81,6 @@ typedef struct {
   double        radius_2;
   double        b;
   int           oversample;
-  int           h_bits;
   long long int h_start;
   long long int h_step;
   long long int h_stop;
@@ -134,7 +132,8 @@ mrc_map* read_mrc_file(char* filename){
   for (i = 0; i < 3; i++){
     header->angpix[i] = header->length_xyz[i] / ((float) header->n_xyz[i]);
   }
-  // These switches set the x, y and z strides for convenience sake - if not available, default parameters are used, but a warning is provided
+  /* These switches set the x, y and z strides for convenience sake - if 
+    not available, default parameters are used, but a warning is provided */
   i = 0;
   switch (header->map_crs[0]){
   case 1:
@@ -303,7 +302,9 @@ int write_mrc_file(mrc_map* header, char* filename){
 }
 
 double preprocess_maps(mrc_map *resmap, mrc_map *map, mrc_map *mask, int total, double angpix){
-  // Obtain map parameters from resolution map, invert the map, set the rms to step size if discrete output, and return exclusion radius_2
+  /* Obtain map parameters from resolution map, invert the map, set the
+     rms to step size if discrete output, and return exclusion radius_2 */
+
   int i;
 
   float new =  0;
@@ -434,52 +435,6 @@ float check_identical_angpix(mrc_map* header){
   return angpix;
 }
 
-inline void int_to_transpose(const long long int hilbert, int *vector){
-  // Integer hilbert point to transpose 
-  int i, j, k = 0;
-  for(i = 2; i >=  0; i--){
-    vector[i] = 0;
-  }
-  for (j = 0; j < 21; j++){
-    for (i = 2; i >= 0; i--){
-      vector[i] += (((hilbert >> k) & 1) << j);
-      k++;
-    }
-  }
-  return;
-}
-
-inline void transpose_to_xyz(int *vector, int bits){
-  // Covert hilbert transpose to xyz vector
-  int n = 2 << (bits - 1), t;
-  int i, j, k;
-  t = vector[2] >> 1;
-  for (i = 2; i > 0; i--){
-    vector[i] ^= vector[i-1];
-  }
-  vector[0] ^= t;
-  for (j = 2; j != n; j <<= 1){
-    k = j - 1;
-    for (i = 2; i >= 0; i--){
-      if (vector[i] & j){
-        vector[0] ^= k;
-      } else { 
-        t = (vector[0] ^ vector[i]) & k;
-        vector[0] ^= t;
-        vector[i] ^= t;
-      }
-    }
-  }
-  return;
-}
-
-inline void d_to_xyz(long long int hilbert, int bits, int *vector){
-  //Convert Hilbert d to realspace vector
-  int_to_transpose(hilbert, vector);
-  transpose_to_xyz(vector, bits);
-  return;
-}
-
 inline double gaussian(double offset_2, double cutoff_2){
   // Spherical Gaussian kernel
   return  pow((2 * M_PI), (-3.0 / 2.0)) * pow(cutoff_2, (-3.0 / 2.0)) * exp(-0.5 * (offset_2 / cutoff_2));
@@ -599,7 +554,8 @@ double *populate_kernel(double resolution, double angpix, double b, int oversamp
 int filter_discrete_resmap(thread_arg *args){
   // Filter planar sections of the map using a single thread and steps corresponding to thread number
 
-  // Specific map bounds and variables - radius from centre then from current point, current radius from each - # within indicates + # - _# indicates power
+  /* Specific map bounds and variables - radius from centre then from current point,
+        current radius from each - # within indicates + # - _# indicates power */
   int oversample   = args->oversample;
   int oversample_2 = oversample * oversample;
   int oversample_3 = oversample * oversample_2;
@@ -616,7 +572,8 @@ int filter_discrete_resmap(thread_arg *args){
   int bar_block       = (newmap_shape[2] >> 6);
   double centre[3]    = {((double) map_shape[0])/2, ((double) map_shape[1])/2, ((double) map_shape[2])/2};
 
-  // Kernel parameters - map density, resmap resolution, lanczos factor, kernel cut-off parameters, low-resolution voxel cut-off, positive B-factor
+  /* Kernel parameters - map density, resmap resolution, lanczos factor, kernel
+       cut-off parameters, low-resolution voxel cut-off, positive B-factor */
   double resolution = 0;
   double density    = 0;
   double old_res    = 0;
@@ -761,7 +718,8 @@ int filter_discrete_resmap(thread_arg *args){
 int filter_continuous_resmap(thread_arg *args){
   // Filter planar sections of the map using a single thread and steps corresponding to thread number
 
-  // Specific map bounds and variables - radius from centre then from current point, current radius from each - # within indicates + # - _# indicates power
+  /* Specific map bounds and variables - radius from centre then from current point,
+       current radius from each - # within indicates + # - _# indicates power */
   int oversample   = args->oversample;
   int oversample_2 = oversample * oversample;
   int oversample_3 = oversample * oversample_2;
@@ -778,7 +736,8 @@ int filter_continuous_resmap(thread_arg *args){
   int bar_block       = (newmap_shape[2] >> 6);
   double centre[3]    = {((double) map_shape[0])/2, ((double) map_shape[1])/2, ((double) map_shape[2])/2};
 
-  // Kernel parameters - map density, resmap resolution, lanczos factor, kernel cut-off parameters, low-resolution voxel cut-off, positive B-factor
+  /* Kernel parameters - map density, resmap resolution, lanczos factor, kernel
+       cut-off parameters, low-resolution voxel cut-off, positive B-factor */
   double resolution = 0;
   double density    = 0;
   double old_res    = 0;
@@ -962,6 +921,7 @@ int main(int argc, char **argv){
   printf("\n                 +++ Beginning run with %i threads +++\n", thread_number);
   for (i = 4; i < argc; i++){
     if (!strcmp(argv[i], "--oversample")){
+      // Oversample two-fold if requested
       oversample = OVERSAMPLING;
       printf("\n       +++ Oversampling input density %i-fold to smooth edges +++\n", oversample);
     } else if (!strcmp(argv[i], "--gauss")){
@@ -1085,7 +1045,6 @@ int main(int argc, char **argv){
     thread_args[i].radius_2   = radius_2;
     thread_args[i].b          = b;
     thread_args[i].oversample = oversample;
-    thread_args[i].h_bits     = bits;
     thread_args[i].h_start    = i;
     thread_args[i].h_step     = thread_number;
     thread_args[i].h_stop     = 1 << (3 * bits);
