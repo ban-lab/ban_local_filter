@@ -3,6 +3,8 @@
 
  The program attempts to locally filter a .mrc density to local resolution given in a local resolution map time efficiently
 
+ Compile with the command:                                     gcc -O3 -lm -lpthread ban_local_filter.c -o ban_local_filter
+
  Required input: ban_local_filter density_map.mrc resolution_map.mrc output_map.mrc [ --mask (mask.mrc) ] [ --bfac (b-factor) ] [ --oversample ] [ --gauss ]
 
  -- environmental variable OMP_NUM_THREADS may be set to limit thread count, otherwise all reported processors will be used
@@ -21,6 +23,7 @@
  -- the gaussian kernel is provided unless the Lanczos kernel exhibits ringing - techically possible but never yet observed
 
  -- ResMap & blocres are both supported: no decision on relative quality is made, such judgements are best left to the user
+    however it is worth noting that blocres maps run comparatively slowly (several minutes) without the provision of a mask
     ban_loc_filt & blocfilt: ban_loc_filt is faster than blocfilt due to the limited support of the kernel and quantisation
 
  -- PLEASE NOTE: The output will only ever be as good as your input resmap, map and mask - if they look poor do not proceed

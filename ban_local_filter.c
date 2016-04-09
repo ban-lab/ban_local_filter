@@ -84,7 +84,6 @@ typedef struct {
   int           oversample;
   long long int h_start;
   long long int h_step;
-  long long int h_stop;
 } thread_arg;
 
 mrc_map* read_mrc_file(char* filename){
@@ -516,9 +515,9 @@ double *populate_kernel(double resolution, double angpix, double b, int oversamp
 	    for (i = i_0; i < i_1; i++){
 
 	      // Exclude voxels outside sphere from current
-	      i_c = ((double) i) - MAX_SUPPORT - (x * inv_oversample);
-	      j_c = ((double) j) - MAX_SUPPORT - (y * inv_oversample);
-	      k_c = ((double) k) - MAX_SUPPORT - (z * inv_oversample);
+	      i_c = ((double) i) - (MAX_SUPPORT + (((double) x) * inv_oversample));
+	      j_c = ((double) j) - (MAX_SUPPORT + (((double) y) * inv_oversample));
+	      k_c = ((double) k) - (MAX_SUPPORT + (((double) z) * inv_oversample));
 	      offset_2 = (i_c * i_c) + (j_c * j_c) + (k_c * k_c);
 	      if (offset_2 > support_2){
 		cube[h] = 0;
@@ -591,12 +590,12 @@ int filter_discrete_resmap(thread_arg *args){
 
   // Map limits
   int z_0, z_1, y_0, y_1, x_0, x_1;
-  x_0 = (int) (centre[0] - radius);
-  x_1 = (int) (centre[0] + radius + 2);
-  y_0 = (int) (centre[1] - radius);
-  y_1 = (int) (centre[1] + radius + 2);
-  z_0 = (int) (centre[2] - radius);
-  z_1 = (int) (centre[2] + radius + 2);
+  x_0 = (int) (centre[0] - radius)     * oversample;
+  x_1 = (int) (centre[0] + radius + 2) * oversample;
+  y_0 = (int) (centre[1] - radius)     * oversample;
+  y_1 = (int) (centre[1] + radius + 2) * oversample;
+  z_0 = (int) (centre[2] - radius)     * oversample;
+  z_1 = (int) (centre[2] + radius + 2) * oversample;
 
   // Cube indeces
   int h, i, j, k;
@@ -663,12 +662,12 @@ int filter_discrete_resmap(thread_arg *args){
 	}
 
 	// Cube limits
-	i_0 = (int) (dbl_vec[0] - support);
-	i_1 = (int) (dbl_vec[0] + suppor2);
-	j_0 = (int) (dbl_vec[1] - support);
-	j_1 = (int) (dbl_vec[1] + suppor2);
-	k_0 = (int) (dbl_vec[2] - support);
-	k_1 = (int) (dbl_vec[2] + suppor2);
+	i_0 = (int) (floor(dbl_vec[0]) - support);
+	i_1 = (int) (floor(dbl_vec[0]) + suppor2);
+	j_0 = (int) (floor(dbl_vec[1]) - support);
+	j_1 = (int) (floor(dbl_vec[1]) + suppor2);
+	k_0 = (int) (floor(dbl_vec[2]) - support);
+	k_1 = (int) (floor(dbl_vec[2]) + suppor2);
 
 	if (oversample > 1){
 	  h      = (x % oversample) + oversample * (y % oversample) + oversample_2 * (z % oversample) + 1;
@@ -755,12 +754,12 @@ int filter_continuous_resmap(thread_arg *args){
 
   // Map limits
   int z_0, z_1, y_0, y_1, x_0, x_1;
-  x_0 = (int) (centre[0] - radius);
-  x_1 = (int) (centre[0] + radius + 2);
-  y_0 = (int) (centre[1] - radius);
-  y_1 = (int) (centre[1] + radius + 2);
-  z_0 = (int) (centre[2] - radius);
-  z_1 = (int) (centre[2] + radius + 2);
+  x_0 = (int) (centre[0] - radius)     * oversample;
+  x_1 = (int) (centre[0] + radius + 2) * oversample;
+  y_0 = (int) (centre[1] - radius)     * oversample;
+  y_1 = (int) (centre[1] + radius + 2) * oversample;
+  z_0 = (int) (centre[2] - radius)     * oversample;
+  z_1 = (int) (centre[2] + radius + 2) * oversample;
 
   // Cube indeces
   int h, i, j, k;
@@ -827,12 +826,12 @@ int filter_continuous_resmap(thread_arg *args){
 	}
 
 	// Cube limits
-	i_0 = (int) (dbl_vec[0] - support);
-	i_1 = (int) (dbl_vec[0] + suppor2);
-	j_0 = (int) (dbl_vec[1] - support);
-	j_1 = (int) (dbl_vec[1] + suppor2);
-	k_0 = (int) (dbl_vec[2] - support);
-	k_1 = (int) (dbl_vec[2] + suppor2);
+	i_0 = (int) (floor(dbl_vec[0]) - support);
+	i_1 = (int) (floor(dbl_vec[0]) + suppor2);
+	j_0 = (int) (floor(dbl_vec[1]) - support);
+	j_1 = (int) (floor(dbl_vec[1]) + suppor2);
+	k_0 = (int) (floor(dbl_vec[2]) - support);
+	k_1 = (int) (floor(dbl_vec[2]) + suppor2);
 
 	if (oversample > 1){
 	  h      = (x % oversample) + oversample * (y % oversample) + oversample_2 * (z % oversample) + 1;
@@ -937,7 +936,7 @@ int main(int argc, char **argv){
       }
       printf("\n       +++ Setting inverse B-sharpening correction to %6g +++\n", b);
     } else if (!strcmp(argv[i], "--mask") && ((i + 1) < argc)){
-      // Get B-factor if provided - invert if negative                                                                                                                           
+      // Use mask if provided - significant speed-up
       mask = read_mrc_file(argv[i + 1]);;
       if (!mask){
 	printf("Error while reading mask - exiting\n");
@@ -1028,14 +1027,6 @@ int main(int argc, char **argv){
     return 1;
   }
 
-  // Determine bit count for map                                                                                                                 
-  int n = 64;
-  int bits = 6;
-  while ((n < newmap->n_crs[0]) || (n < newmap->n_crs[1]) || (n < newmap->n_crs[2])){
-    n = n << 1;
-    bits++;
-  }
-
   // Populate thread arguments
   for (i = 0; i < thread_number; i++){
     thread_args[i].map        = map;
@@ -1048,7 +1039,6 @@ int main(int argc, char **argv){
     thread_args[i].oversample = oversample;
     thread_args[i].h_start    = i;
     thread_args[i].h_step     = thread_number;
-    thread_args[i].h_stop     = 1 << (3 * bits);
   }
 
   // Create threads
