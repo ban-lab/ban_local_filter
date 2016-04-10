@@ -35,6 +35,7 @@
     max support, twofold oversampling, density truncation, max kernels to store */
 #define CUT 2
 #define ALPHA 5
+#define MAX_RES 50
 #define INTERCEPT 4.49340945790906
 #define MAX_SUPPORT 1000
 #define OVERSAMPLING 2
@@ -305,20 +306,24 @@ double preprocess_maps(mrc_map *resmap, mrc_map *map, mrc_map *mask, int total, 
   /* Obtain map parameters from resolution map, invert the map, set the
      rms to step size if discrete output, and return exclusion radius_2 */
 
-  int i;
+  int i, count;
 
-  float new =  0;
-  float old =  0;
-  float max = -1e100;
-  float min =  1e100;
-  float stp =  1e100;
+  double new =  0;
+  double old =  0;
+  double max = -1e100;
+  double min =  1e100;
+  double stp =  1e100;
 
   // Invert the resmap and handle zeros
+  resmap->ispg = 0;
   for (i = 0; i < total; i++){
-    new = resmap->data[i];
+    new = (double) resmap->data[i];
     if (new > 0){
       resmap->data[i] = 1. / new;
-      if ((new > max) && (new < 100)){
+      if ((mask) && (!mask->data[i])){
+	continue;
+      }
+      if ((new > max) && (new < MAX_RES)){
 	max = new;
       }
       if (new < min){
@@ -331,13 +336,41 @@ double preprocess_maps(mrc_map *resmap, mrc_map *map, mrc_map *mask, int total, 
       }
     old = new;
     } else {
-      resmap->data[i] = 1. / 100.;
+      resmap->data[i] = 1 / MAX_RES;
     }
   }
 
   // Return resmap parameters within header
   resmap->d_min = min;
   resmap->rms   = stp;
+
+  count = (int) round((max - min) / stp) + 1;
+
+  // Step domain is passed back through ISPG
+  if (count >= MAX_KERNEL_NUMBER){
+    resmap->ispg = 1;
+    new = 0;
+    old = 0;
+    stp = 1e100;
+    for (i = 0; i < total; i++){
+      new = (double) resmap->data[i];
+      if (new > (1 / MAX_RES)){
+	if ((mask) && (!mask->data[i])){
+	  continue;
+	}
+	if (((new - old) < stp) && ((new - old) > 0)){
+	  stp = new - old;
+	} else if (((old - new) < stp) && ((old - new) > 0)){
+	  stp = old - new;
+	}
+      }
+      old = new;
+    }
+    count = (int) round(((1 / min) - (1 / max)) / stp) + 1;
+    if (count >= MAX_KERNEL_NUMBER){
+      resmap->ispg = 2;
+    }
+  }
 
   // Return square radius
   int x, y, z;
@@ -352,8 +385,12 @@ double preprocess_maps(mrc_map *resmap, mrc_map *map, mrc_map *mask, int total, 
 
   // Set masked area to one step above max res if not assigned
   if (mask){
-    resmap->d_max = max + stp;
-    inv_max = (double) 1 / (max + stp);
+    max = max + resmap->rms;
+    if (max > MAX_RES){
+      max = MAX_RES;
+    }
+    resmap->d_max = max;
+    inv_max = (double) 1 / max;
     for (i = 0; i < total; i++){
       if (mask->data[i]){
 	// Set square radius to max point of mask
@@ -373,6 +410,9 @@ double preprocess_maps(mrc_map *resmap, mrc_map *map, mrc_map *mask, int total, 
       }
     }
   } else {
+    if (max > MAX_RES){
+      max = MAX_RES;
+    }
     resmap->d_max = max;
     inv_max = (double) 1 / max;
     for (i = 0; i < total; i++){
@@ -389,6 +429,11 @@ double preprocess_maps(mrc_map *resmap, mrc_map *map, mrc_map *mask, int total, 
 	}
       }
     }
+  }
+
+  // Pass back step for inverse case
+  if (resmap->ispg == 1){
+    resmap->rms = stp;
   }
 
   // Ensure radius doesn't extend beyond map
@@ -551,7 +596,7 @@ double *populate_kernel(double resolution, double angpix, double b, int oversamp
   return cube;
 }
 
-int filter_discrete_resmap(thread_arg *args){
+int filter_resmap(thread_arg *args){
   // Filter planar sections of the map using a single thread and steps corresponding to thread number
 
   /* Specific map bounds and variables - radius from centre then from current point,
@@ -655,171 +700,17 @@ int filter_discrete_resmap(thread_arg *args){
 
 	if (resolution != old_res){
 	  // Select precalculated cube for product if resolution has changed
-	  kernel  = args->kernels[(int) round(((1 / resolution) - min_res) / res_stp)];
-	  support = kernel[0];
-	  suppor2 = support + 2;
-	  old_res = resolution;
-	}
-
-	// Cube limits
-	i_0 = (int) (floor(dbl_vec[0]) - support);
-	i_1 = (int) (floor(dbl_vec[0]) + suppor2);
-	j_0 = (int) (floor(dbl_vec[1]) - support);
-	j_1 = (int) (floor(dbl_vec[1]) + suppor2);
-	k_0 = (int) (floor(dbl_vec[2]) - support);
-	k_1 = (int) (floor(dbl_vec[2]) + suppor2);
-
-	if (oversample > 1){
-	  h      = (x % oversample) + oversample * (y % oversample) + oversample_2 * (z % oversample) + 1;
-	  index  = (x * newstride[0] + y * newstride[1] + z * newstride[2]);
-	  step   = (i_1 - i_0) * oversample_3;
-	  step_2 = step * step * oversample_3;
-	} else {
-	  h      = 1;
-	  step   = (i_1 - i_0);
-	  step_2 = step * step;
-	}
-
-	density = 0;
-
-	// Loop over local cube
-	for (k = k_0; k < k_1; k++){
-	  if (k < 0 || k >= map_shape[2]){
-	    h += step_2;
-	    continue;
+	  switch (args->resmap->ispg){
+	  case 0:
+	    kernel = args->kernels[(int) round(((1 / resolution) - min_res) / res_stp)];
+	    break;
+	  case 1:
+	    kernel = args->kernels[(int) round((resolution - max_res) / res_stp)];
+	    break;
+	  default:
+	    kernel = args->kernels[(int) floor(200 * (resolution - max_res))];
+	    break;
 	  }
-	  for (j = j_0; j < j_1; j++){
-	    if (j < 0 || j >= map_shape[1]){
-	      h += step;
-	      continue;
-	    }
-	    for (i = i_0; i < i_1; i++){
-	      if (i < 0 || i >= map_shape[0]){
-		h += oversample_3;
-		continue;
-	      }
-	      // Determine new map density
-	      density += ((double) args->map->data[i * stride[0] + j * stride[1] + k * stride[2]]) * kernel[h];
-	      h       += oversample_3;
-	    }
-	  }
-	}
-	// Values returned through arg struct
-	if (density){
-	  args->newmap->data[index] = (float) density;
-	}
-      }
-    }
-  }
-
-  return 0;
-}
-
-int filter_continuous_resmap(thread_arg *args){
-  // Filter planar sections of the map using a single thread and steps corresponding to thread number
-
-  /* Specific map bounds and variables - radius from centre then from current point,
-       current radius from each - # within indicates + # - _# indicates power */
-  int oversample   = args->oversample;
-  int oversample_2 = oversample * oversample;
-  int oversample_3 = oversample * oversample_2;
-  double cent_offset_2, support, suppor2;
-  double radius_2       = args->radius_2;
-  double radius         = sqrt(radius_2);
-  double dbl_oversample = (double) oversample;
-
-  // Local map variables to minimise the number of request collisions slowing progress
-  int stride[3]       = {args->map->stride[0], args->map->stride[1], args->map->stride[2]};
-  int newstride[3]    = {args->newmap->stride[0], args->newmap->stride[1], args->newmap->stride[2]};
-  int map_shape[3]    = {args->map->n_xyz[0], args->map->n_xyz[1], args->map->n_xyz[2]};
-  int newmap_shape[3] = {args->newmap->n_xyz[0], args->newmap->n_xyz[1], args->newmap->n_xyz[2]};
-  int bar_block       = (newmap_shape[2] >> 6);
-  double centre[3]    = {((double) map_shape[0])/2, ((double) map_shape[1])/2, ((double) map_shape[2])/2};
-
-  /* Kernel parameters - map density, resmap resolution, lanczos factor, kernel
-       cut-off parameters, low-resolution voxel cut-off, positive B-factor */
-  double resolution = 0;
-  double density    = 0;
-  double old_res    = 0;
-  double res_stp    = args->resmap->rms;
-  double min_res    = args->resmap->d_min;
-  double max_res    = 1 / args->resmap->d_max;
-  double *kernel    = args->kernels[0];
-
-  // Map indeces
-  int x, y, z, index;
-  double dbl_vec[3]     = {0, 0, 0};
-  long long int h_start = args->h_start;
-  long long int h_step  = args->h_step;
-
-  // Map limits
-  int z_0, z_1, y_0, y_1, x_0, x_1;
-  x_0 = (int) (centre[0] - radius)     * oversample;
-  x_1 = (int) (centre[0] + radius + 2) * oversample;
-  y_0 = (int) (centre[1] - radius)     * oversample;
-  y_1 = (int) (centre[1] + radius + 2) * oversample;
-  z_0 = (int) (centre[2] - radius)     * oversample;
-  z_1 = (int) (centre[2] + radius + 2) * oversample;
-
-  // Cube indeces
-  int h, i, j, k;
-
-  // Local bounds
-  int    i_0, i_1, j_0, j_1, k_0, k_1, step, step_2;
-  double x_c, y_c, z_c;
-
-  // Loop over map indices - z steps are by number of threads  each time
-  for (z = h_start; z < newmap_shape[2]; z += h_step){
-
-    // Update progress bar
-    if (!(z % bar_block)){
-      printf("#");
-    }
-
-    if (z < z_0 || z > z_1){
-      continue;
-    }
-    for (y = 0; y < newmap_shape[1]; y++){
-      if (y < y_0 || y > y_1){
-	continue;
-      }
-      for (x = 0; x < newmap_shape[0]; x++){
-
-	// Make xyz vectors
-	if (oversample > 1){
-	  dbl_vec[0] = ((double) x) / dbl_oversample;
-	  dbl_vec[1] = ((double) y) / dbl_oversample;
-	  dbl_vec[2] = ((double) z) / dbl_oversample;
-	} else {
-	  dbl_vec[0] = ((double) x);
-          dbl_vec[1] = ((double) y);
-          dbl_vec[2] = ((double) z);
-	}
-
-	index = (int) floor(dbl_vec[0]) * stride[0] + floor(dbl_vec[1]) * stride[1] + floor(dbl_vec[2]) * stride[2];
-
-	// Skip voxels outside mask if provided or otherwise if unassigned
-	resolution = (double) args->resmap->data[index];
-	if (args->mask){
-	  if (!args->mask->data[index]){
-	    continue;
-	  }
-	} else if (resolution < max_res){
-	  continue;
-	}
-
-	// Exclude voxels outside sphere from centre
-	x_c = dbl_vec[0] - centre[0];
-	y_c = dbl_vec[1] - centre[1];
-	z_c = dbl_vec[2] - centre[2];
-	cent_offset_2 = (x_c * x_c) + (y_c * y_c) + (z_c * z_c);
-	if (cent_offset_2 > radius_2){
-	  continue;
-	}
-
-	if (resolution != old_res){
-	  // Select precalculated cube for product if resolution has changed
-	  kernel  = args->kernels[(int) floor(200 * (resolution - max_res))];
 	  support = kernel[0];
 	  suppor2 = support + 2;
 	  old_res = resolution;
@@ -966,21 +857,40 @@ int main(int argc, char **argv){
 
   double **kernels = NULL;
 
-  int count = (int) round((resmap->d_max - resmap->d_min) / resmap->rms) + 1;
-
-  if (count < MAX_KERNEL_NUMBER){
+  int count;
+  switch (resmap->ispg){
+  case 0:
+    // Use real space if resolution quantised in real space - i.e. Resmap
+    printf("\n         +++ Building real-space quantised kernel functions+++\n");
+    count   = (int) round((resmap->d_max - resmap->d_min) / resmap->rms) + 1;
     kernels = calloc(count, sizeof(void*));
     for (i = 0; i < count; i++){
-      kernels[i] = populate_kernel(((double) (1 / (resmap->d_min + ((double) i) * resmap->rms))), angpix, b, oversample, gauss);
+      kernels[i] = populate_kernel((double) (1 / (resmap->d_min + ((double) i) * resmap->rms)), angpix, b, oversample, gauss);
       if (!kernels[i]){
 	printf("Error during memory allocation for kernels - exiting\n");
 	return 1;
       }
     }
-  } else {
+    break;
+  case 1:
+    // Use reciprocal space if resolution quantised in real space - i.e. blocres
+    printf("\n      +++ Building reciprocal-space quantised kernel functions+++\n");
+    count   = (int) round(((1 / resmap->d_min) - (1 / resmap->d_max)) / resmap->rms) + 1;
+    kernels = calloc(count, sizeof(void*));
+    for (i = 0; i < count; i++){
+      kernels[i] = populate_kernel((double) ((1 / resmap->d_max) + ((double) i) * resmap->rms), angpix, b, oversample, gauss);
+      if (!kernels[i]){
+	printf("Error during memory allocation for kernels - exiting\n");
+	return 1;
+      }
+    }
+    break;
+  default:
+    // Sample over 100 evenly spread reciprocal resolution kernel functions if continuous
+    printf("\n      +++ Building evenly reciprocally spaced kernel functions+++\n");
     count = (int) round((200 / resmap->d_min) - (200 / resmap->d_max)) + 1;
     if (count > MAX_KERNEL_NUMBER){
-      printf("Maps extending beyond nyquist may not be supported\n");
+      printf("Maps extending much beyond nyquist are not supported\n");
       return 1;
     }
     kernels = calloc(count, sizeof(void*));
@@ -991,7 +901,7 @@ int main(int argc, char **argv){
 	return 1;
       }
     }
-    count = 0;
+    break;
   }
   
 
@@ -1043,11 +953,7 @@ int main(int argc, char **argv){
 
   // Create threads
   for (i = 0; i < thread_number; i++){
-    if (count){
-      result_code = pthread_create(&threads[i], NULL, (void*) filter_discrete_resmap, &thread_args[i]);
-    } else {
-      result_code = pthread_create(&threads[i], NULL, (void*) filter_continuous_resmap, &thread_args[i]);
-    }
+    result_code = pthread_create(&threads[i], NULL, (void*) filter_resmap, &thread_args[i]);
     if (result_code){
       printf("\nThread initialisation failed!\n");
       return 1;
