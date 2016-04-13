@@ -851,6 +851,10 @@ int main(int argc, char **argv){
     printf("Error - differently shaped maps - exiting\n");
     return 1;
   }
+  if (total != (mask->n_crs[0] * mask->n_crs[1] * mask->n_crs[2])){
+    printf("Error - differently shaped mask - exiting\n");
+    return 1;
+  }
   
   double angpix   = (double) check_identical_angpix(map);
   double radius_2 = preprocess_maps(resmap, map, mask, total, angpix);
